@@ -2,32 +2,45 @@ name: Deploy Content
 
 on:
   push:
+    branches: [ main ]
     paths:
       - 'content/**'
+      - 'frontend/**'
+      - '.github/workflows/deploy-content.yml'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: npm ci
+      # ✅ install inside frontend
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
 
-    - name: Build (if needed)
-      run: npm run build
+      # ✅ build inside frontend
+      - name: Build (if needed)
+        run: npm run build
+        working-directory: frontend
 
-    - name: Deploy to AWS Lightsail
-      uses: appleboy/ssh-action@v0.1.6
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        key:      ${{ secrets.SSH_KEY }}
-        script: |
-          cd ~/ConceptComsWebsite
-          git pull origin main
-          npm ci
-          npm run build
-          ./deploy_beta.sh
+      # ✅ build & deploy on the server, but also from frontend dir
+      - name: Deploy to AWS Lightsail
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd ~/ConceptComsWebsite
+            git fetch origin main
+            git reset --hard origin/main
+            cd frontend
+            if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+            npm run build
+            cd ..
+            ./deploy_beta.sh
